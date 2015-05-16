@@ -209,88 +209,87 @@ var roles = ['god','super','admin','mod','basic','mute']; /*The basic 6 roles of
      * @param {string} input
      * @param {Array.<string>} expect
      */
+     
+    //User command parser for commands: Private message (pm), (un)block, (un)alert, kick, ban, permaban, speak, and global.
     function parseParams(name, input, expect) {
-        if ('pm block alert unblock unalert'.search(name) != -1 && input.trim() == ""){
-            CLIENT.show({
-                message : "Invalid: /"+name+" <nick>",
-                type : 'error-message'
-            });
-            return;
-        }
-        switch(name) {
-            case 'pm':
-                var pm = /^(.*?[^\\])\|([\s\S]*)$/.exec(input);
-                if (pm) {
-                    var nick = pm[1].replace('\\|', '|');
-                    lastNick = nick;
+        if (name == 'pm') { 						//Private message.
+            var pm = /^(.*?[^\\])\|([\s\S]*)$/.exec(input);
+            if (pm) {
+                var nick = pm[1].replace('\\|', '|');
+                lastNick = nick;
+                var message = pm[2];
+                return {
+                    nick : nick,
+                    message : message,
+                }; 
+            }
+        } else if(name == 'block' || name == 'alert'){			//Block and alert
+            if (input.trim() != ""){
+                add(name,input.trim());
+            } else {
+                CLIENT.show({
+                    message : "Invalid: /"+name+" <nick>",
+                    type : 'error-message'
+                });
+            }
+        } else if(name == 'unblock' || name == 'unalert') {		//Unblock and unalert
+            if (input.trim() != ""){
+                remove(name.substring(2),input.trim());
+            } else {
+                CLIENT.show({
+                    message : "Invalid: /"+name+" <nick>",
+                    type : 'error-message'
+                });
+            }
+        } else if (name == 'kick' || name == "ban" || name == "permaban" || name == "speak") { //Kick, ban, permaban, and speak
+            var pm = /^(.*?[^\\])(?:\|([\s\S]*))?$/.exec(input);
+            if (pm) {
+                var nick = pm[1].replace('\\|', '|');
+                var message = pm[2]  || " ";
+                if(name == 'speak'){
+                    return {
+                        voice : nick,
+                        message : message
+                    }; 
+                } else {
                     return {
                         nick : nick,
-                        message : pm[2],
-                    }; 
+                        message : message
+                    };
                 }
-                break;
-            case 'block':
-            case 'alert':
-                add(name, input.trim());
-                break;
-            case 'unblock':
-            case 'unalert':
-                remove(name.substring(2),input.trim());
-                break;
-            case 'kick':
-            case 'ban':
-            case 'permaban':
-            case 'speak':
-                var pm = /^(.*?[^\\])(?:\|([\s\S]*))?$/.exec(input);
-                if (pm) {
-                    var param1 = pm[1].replace('\\|', '|');
-                    var param2 = pm[2]  || " ";
-                    if(name == 'speak'){
-                        return {
-                            voice : param1,
-                            message : param2
-                            
-                        }; 
-                    } else {
-                        return {
-                            nick : param1,
-                            message : param2
-                        };
-                    }
-                }
-                break;
-            case 'global':
-                var msg = /([\s\S]*)?$/.exec(input);
-                return {
-                    message : msg[0]
-                };
-                break;
-            default:
-                var values = input.split(' ');
-                if (values[0] == '') {
-                    values.shift();
-                }
-                var lastParam = _.last(expect);
-                if (lastParam && /\$$/.test(lastParam) && values.length > expect.length) {
-                    var combine = values.splice(expect.length, values.length - expect.length).join(' ');
-                    values[expect.length - 1] += ' ' + combine;
-                }
-                if (values.length == expect.length) {
-                    var params = {};
-                    values.forEach(function(param, i) {
-                        params[expect[i].replace('$', '')] = param;
-                    });
-                    return params;
-                }
+            }
+        } else if(name == 'global') {					//Global
+            var msg = /([\s\S]*)?$/.exec(input);
+            return {
+                message : msg[0]
+            };
+        } else {
+            var values = input.split(' ');
+            if (values[0] == '') {
+                values.shift();
+            }
+            var lastParam = _.last(expect);
+            if (lastParam && /\$$/.test(lastParam) && values.length > expect.length) {
+                var combine = values.splice(expect.length, values.length - expect.length).join(' ');
+                values[expect.length - 1] += ' ' + combine;
+            }
+            if (values.length == expect.length) {
+                var params = {};
+                values.forEach(function(param, i) {
+                    params[expect[i].replace('$', '')] = param;
+                });
+                return params;
+            }
         }
+        return null;
     }
 
-    CLIENT = new (Backbone.Model.extend({
+    CLIENT = new (Backbone.Model.extend({				//Initialization of the Client.
         initialize : function() {
             /* Initialize from localstorage. */
             'color font style mute mute_speak play nick images security msg flair cursors styles bg access_level role part block alert menu_top menu_left menu_display mask frame'.split(' ').forEach(function(key) {
                 this.set(key, localStorage.getItem('chat-' + key));
-                this.on('change:' + key, function(m, value) {
+                this.on('change:' + key, function(m, value) 
                     if (value) {
                         localStorage.setItem('chat-' + key, value);
                     } else {
@@ -309,14 +308,16 @@ var roles = ['god','super','admin','mod','basic','mute']; /*The basic 6 roles of
                     }
                 }, this);
             }, this);
-
+            
+            //Show what has changed
             'color font style flair'.split(' ').forEach(function(key) {
                 this.on('change:' + key, function(m, value) {
                     this.submit('/echo Now your messages look like this');
                 }, this);
             }, this);
         },
-
+	
+	//Request number manager
         request : function(msg) {
             var id = requestId++;
             var result = requests[id] = $.Deferred();
@@ -327,6 +328,7 @@ var roles = ['god','super','admin','mod','basic','mute']; /*The basic 6 roles of
             return result.promise();
         },
 
+	//Gets commands available to the Client's role
         getAvailableCommands : function() {
             var myrole = this.get('role');
             return myrole == null ? [] : _.filter(_.keys(COMMANDS), function(key) {
@@ -335,6 +337,7 @@ var roles = ['god','super','admin','mod','basic','mute']; /*The basic 6 roles of
             });
         },
 
+	//How submitting a message works
         submit : function(input) {
             var role = this.get('role');
             var access_level = this.get('access_level');
@@ -391,10 +394,12 @@ var roles = ['god','super','admin','mod','basic','mute']; /*The basic 6 roles of
             }
         },
 
+	//Show function
         show : function(message) {
             this.trigger('message', message);
         },
-
+        
+        //The decorate function, includes style, color, and font.
         decorate : function(input) {
             if (!(input.charAt(0) == '>' && input.charAt(1) != '>')) {
                 var style = this.get('style');
@@ -411,9 +416,14 @@ var roles = ['god','super','admin','mod','basic','mute']; /*The basic 6 roles of
                     input = style + input;
                 }
                 input = ' ' + input;
-                color ? input = '#' + color + input + ' ' : input = input + ' ';
-                if (font)
+                if (color) {
+                    input = '#' + color + input + ' ';
+                } else {
+                    input = input + ' ';
+                }
+                if (font) {
                     input = '$' + font + '|' + input;
+                }
             }
             return input;
         }
@@ -425,11 +435,7 @@ var roles = ['god','super','admin','mod','basic','mute']; /*The basic 6 roles of
     }));
 });
 
-// ------------------------------------------------------------------
-// Topic
-// ------------------------------------------------------------------
-
-$(function() {
+    //Toggle based commands
     var blurred = false;
     var unread = 0;
     var check = new RegExp('\\b'+ CLIENT.get('nick') +'\\b',"gi");
@@ -496,27 +502,43 @@ $(function() {
             $("#youtube")[0].innerHTML = "";
         }
     });
-    
-    var attList = ['images', 'bg', 'styles', 'block', 'alert', 'frame', 'frame_src', 'play'];// All attributes to set
-    for (var i = 0; i < attList.length; i++){
-    	var x = attList[i];
-        if (!CLIENT.get(x))
-            if ('block alert frame_src'.search(x) != -1) // Include here attributes to set to ''
-                CLIENT.set(x, '');
-            else
-                CLIENT.set(x, 'on'); // Default is 'on'
+    // a bunch of test and sets
+    if (CLIENT.get('images') == null){
+        CLIENT.set('images', 'on'); 
+    }
+    if (CLIENT.get('bg') == null){
+        CLIENT.set('bg', 'on'); 
+    }
+    if (CLIENT.get('styles') == null){
+        CLIENT.set('styles', 'on'); 
+    }
+    if (CLIENT.get('block') == null){
+        CLIENT.set('block', ''); 
+    }
+    if (CLIENT.get('alert') == null){
+        CLIENT.set('alert', ''); 
+    }
+    if (CLIENT.get('frame') == null){
+        CLIENT.set('frame', 'on'); 
+    }
+    if (CLIENT.get('frame_src') == null){
+        CLIENT.set('frame_src', ''); 
+    }
+    if (CLIENT.get('play') == null){
+        CLIENT.set('play', 'on');
     }
 });
 
-// ------------------------------------------------------------------
-// Theme
-// ------------------------------------------------------------------
 
+//Background/bg, theme, and chatstyle
 $(function() {
     CLIENT.on('change:background', function(m, background) {
-        if (background && CLIENT.get('bg') == 'on' && background != 'default')
+        if (background && CLIENT.get('bg') == 'on' && background != 'default') {
             $('#messages').css('background', background);
-        CLIENT.set('old', background);
+            CLIENT.set('old', background);
+        } else {
+            CLIENT.set('old', background);
+        }
     });
     CLIENT.on('change:theme_style', function(m, theme_style) {
         if (theme_style) {
@@ -543,45 +565,36 @@ $(function() {
     });
 });
 
-// ------------------------------------------------------------------
-// Online User Tracking
-// ------------------------------------------------------------------
-
+//Keep track of people
 $(function() {
-    
-    /*
-     * Updates menu user count
-     */
     function updateCount() {
         $('#tabbed-menu').text(ONLINE.size());
     }
     
     $('#tabbed-menu').click(function(){
-    	var distanceFromTop = $("#tabbed-menu").offset().top - $(window).scrollTop()
-    	if ( distanceFromTop < 350 ) {
-    	    document.getElementById("user-list").style.bottom = "inherit";
-    	}
-    	else {
-    	    document.getElementById("user-list").style.bottom = "50px";
-    	}
-    	$('#user-list').slideToggle();
+        $('#user-list').slideToggle();
     });
     
-    if (CLIENT.get('menu_display')){
+    if(CLIENT.get('menu_display') != 'undefined'){
         $('.menu-container').css('left',CLIENT.get('menu_left'));
         $('.menu-container').css('top',CLIENT.get('menu_top'));
     }
     
     ONLINE.on('add', function(user) {
-    	var nick;
         var li = $('<li class="users"></li>').attr({
             class : 'online-' + user.get('id')
         }).appendTo('.online');
-        user.get('nick').length > 35 ? nick = $('<span></span>').text(user.get('nick').substring(0,32)+'...').appendTo(li) :
+        var nick;
+        if (user.get('nick').length > 35)
+            nick = $('<span></span>').text(user.get('nick').substring(0,32)+'...').appendTo(li);
+        else
             nick = $('<span></span>').text(user.get('nick')).appendTo(li);
         li.append(' ');
         user.on('change:nick', function() {
-            user.get('nick').length > 35 ? nick.text(user.get('nick').substring(0,32)+'...') : nick.text(user.get('nick'));
+            if (user.get('nick').length > 35)
+                nick.text(user.get('nick').substring(0,32)+'...');
+            else
+                nick.text(user.get('nick'));
         });
         CLIENT.on('change:menu_display', function(e) {
             //nothing for now
@@ -601,8 +614,8 @@ $(function() {
         drag : function(){
             CLIENT.set('menu_left',$(this).css('left'));
             CLIENT.set('menu_top',$(this).css('top'));
-            if (parseInt($(this).css('top')) > -60){
-                $(this).draggable("option", "containment", "");
+            if(parseInt($(this).css('top')) > -60){
+                $(this).draggable( "option", "containment", "" );
             }
         }
     });
@@ -615,11 +628,11 @@ $(function() {
         accept: '#tabbed-menu-cotainer',
         drop: function (event, ui) {
             //snap button into place
-            $('#tabbed-menu-cotainer').css('top','8px');
-            $('#tabbed-menu-cotainer').css('left','');
-            $('#tabbed-menu-cotainer').css('right','0');
+            $('#tabbed-menu-cotainer').css('top','8px')
+            $('#tabbed-menu-cotainer').css('left','')
+            $('#tabbed-menu-cotainer').css('right','0')
             //resize char-bar
-            $('#input-message').css('width','calc(100% - 34px)');
+            $('#input-message').css('width','calc(100% - 34px)')
         },
         out: function(event, ui){
             //expand chat-bar
@@ -636,51 +649,36 @@ $(function() {
         items: {
             "PM": {
                 name: "PM",
-                callback: function(){ 
-                    $('#input-message').focus().val('').val('/pm ' + $.trim(this[0].textContent) + '|');
-                }
+                callback: function(){ $('#input-message').focus().val('').val('/pm ' + $.trim(this[0].textContent) + '|'); }
             },
             "sep1": "---------",
             "Kick": {
                 name: "Kick",
-                callback: function(){
-                    CLIENT.submit('/kick '+ $.trim(this[0].textContent));
-                }
+                callback: function(){ CLIENT.submit('/kick '+ $.trim(this[0].textContent)) }
             },
             "Ban": {
                 name: "Ban",
-                callback: function(){
-                    CLIENT.submit('/ban '+ $.trim(this[0].textContent));
-                }
+                callback: function(){ CLIENT.submit('/ban '+ $.trim(this[0].textContent)) }
             },
             "Banip": {
                 name : "Banip",
-                callback: function(){
-                    CLIENT.submit('/banip '+ $.trim(this[0].textContent));
-                }
+                callback: function(){ CLIENT.submit('/banip '+ $.trim(this[0].textContent)) }
             },
             "sep2": "---------",
             "Block": {
                 name: "Block",
-                callback: function(){
-                    CLIENT.submit('/block '+this[0].textContent);
-                }
+                callback: function(){ CLIENT.submit('/block '+this[0].textContent) }
             },
             "UnBlock": {
                 name: "UnBlock",
-                callback: function(){
-                    CLIENT.submit('/unblock '+this[0].textContent)
-                }
+                callback: function(){ CLIENT.submit('/unblock '+this[0].textContent) }
             },
             "Whois": {
                 name: "Whois",
-                callback: function(){
-                    CLIENT.submit('/whois '+$.trim(this[0].textContent))
-                }
+                callback: function(){ CLIENT.submit('/whois '+$.trim(this[0].textContent)) }
             }
         }
     });
-    
     $('.online').click(function(e){
         $('.data-title').attr('data-menutitle', e.target.textContent);
     });
@@ -781,44 +779,44 @@ $(function() {
         if (message.message) {
             var parsed;
             switch (message.type) {
-                case 'escaped-message':
-                    parsed = $('<span></span>').text(message.message).html().replace(/\n/g, '<br/>');
-                    break;
-                case 'personal-message':
-                case 'chat-message':
-                    parser.getAllFonts(message.message);
-                    parsed = parser.parse(message.message);
-                    break;
-                case 'elbot-response':
-                    parsed = message.message;
-                    break;
-                case 'general-message':
-                    parsed = parser.parse(message.message, true);
-                    break;
-                case 'alert-message':
-                    parsed = parser.parse(message.message);
-                    break;
-                case 'note-message':
-                    parsed = parser.parse(message.message);
-                    break; 
-                case 'anon-message':
-                    if(CLIENT.get('role') == null || roles.indexOf(CLIENT.get('role')) >= 2){
-                        parsed = parser.parse( '#6464C0' + 'anon' + ': ' + message.message);
-                    } else {
-                        parsed = parser.parse( '#6464C0' + message.name + ': ' + message.message);
-                    }
-                    break;
-                case 'error-message':
-                    parsed = parser.parse(message.message);
-                    break;
-                default:
-                    parsed = parser.parseLinks(message.message);
-                    break;
+            case 'escaped-message':
+                parsed = $('<span></span>').text(message.message).html().replace(/\n/g, '<br/>');
+                break;
+            case 'personal-message':
+            case 'chat-message':
+                parser.getAllFonts(message.message);
+                parsed = parser.parse(message.message);
+                break;
+            case 'elbot-response':
+                parsed = message.message;
+                break;
+            case 'general-message':
+                parsed = parser.parse(message.message, true);
+                break;
+            case 'alert-message':
+                parsed = parser.parse(message.message);
+                break;
+            case 'note-message':
+                parsed = parser.parse(message.message);
+                break; 
+            case 'anon-message':
+                if(CLIENT.get('role') == null || roles.indexOf(CLIENT.get('role')) >= 2){
+                    parsed = parser.parse( '#6464C0' + 'anon' + ': ' + message.message);
+                } else {
+                    parsed = parser.parse( '#6464C0' + message.name + ': ' + message.message);
+                }
+                break;
+            case 'error-message':
+            	parsed = parser.parse(message.message);
+            	break;
+            default:
+                parsed = parser.parseLinks(message.message);
+                break;
             }
             $('<span class="content"></span>').html(parsed || message.message).appendTo(content);
         }
         if (message.type == 'spoken-message' && CLIENT.get('mute') != 'on' && CLIENT.get('mute_speak') != 'on') {
-            var voices = ['default','yoda', 'old', 'loli', 'whisper', 'badguy'];
+            var voices = ['default','yoda','clever', 'old', 'loli', 'whisper', 'badguy', 'aussie', 'terrorist', 'japan', 'alien', 'nigga', 'demon'];
             if(voices.indexOf(message.voice) > 0){
                 var uri = message.source
             } else {
@@ -867,15 +865,16 @@ $(function() {
     }
 });
 
-/*
- * Sets input bar value to clicked message
- */
-$('#messages').on("click", ".message .timestamp", function(e){
+// get message
+$( '#messages' ).on("click", ".message .timestamp", function(e) {
     var number = e.currentTarget.title;
     if (number != "") {
         var textBox = document.getElementById('input-message');
-        textBox.value == '' || textBox.value.substring(textBox.value.length - 1) == ' ' ? textBox.value = textBox.value + '>>' + number + ' ' :
-        textBox.value = textBox.value + ' >>' + number + ' ';
+        if (textBox.value == '' || textBox.value.substring(textBox.value.length - 1) == ' '){
+            textBox.value = textBox.value + '>>' + number + ' ';
+        } else {
+            textBox.value = textBox.value + ' >>' + number + ' ';
+        }
         $('#input-message').focus();
     }
 });
@@ -906,12 +905,17 @@ $('#messages').on("click", ".message .timestamp", function(e){
 
 $(function() {
     function setHighlightColor(color) {
-        var textColor;
+        var textColor = null;
         if (color) {
             var i = color.lastIndexOf('#');
-            i >= 0 ? textColor = color.substring(i + 1) : textColor = color;
-            if (/([a-f]{6}|[a-f]{3})/i.test(textColor))
-            	textColor = '#' + textColor;
+            if (i >= 0) {
+                textColor = color.substring(i + 1);
+            } else {
+                textColor = color;
+            }
+            if (/([a-f]{6}|[a-f]{3})/i.test(textColor)) {
+                textColor = '#' + textColor;
+            }
         } else {
             textColor = '#888';
         }
@@ -945,7 +949,9 @@ $(function() {
         var ac = $('#autocomplete');
         if (ac.length == 0 || ac.css('display') == 'none') {
             var text = input.val();
-            text && CLIENT.submit(text);
+            if (text) {
+                CLIENT.submit(text);
+            }
             historyIndex = -1;
             history.push(text);
             input.val('');
@@ -958,7 +964,9 @@ $(function() {
             if (!e.shiftKey) {
                 e.preventDefault();
                 var text = input.val();
-                text && CLIENT.submit(text);
+                if (text) {
+                    CLIENT.submit(text);
+                }
                 historyIndex = -1;
                 history.push(text);
                 input.val('');
@@ -986,11 +994,11 @@ $(function() {
     });
     
     var ctrl = false;
-    var hover;
+    var hover = null;
 
     $(document).keydown(function(e){
-        if (e.keyCode == 17 && hover){
-            if (hover.localName == 'img'){
+        if(e.keyCode == 17 && hover != null){
+            if(hover.localName == 'img'){
                 $('#bigimg')[0].innerHTML = hover.outerHTML;
                 $('#bigimg').children().removeAttr('onload');
             }
@@ -999,21 +1007,21 @@ $(function() {
     })
 
     $(document).keyup(function(e){
-        if (e.keyCode == 17){
+        if(e.keyCode == 17){
             ctrl = false;
             $('#bigimg')[0].innerHTML = '';
         }
     })
 
-    $('#messages').on('mousemove', function(e) {
+ $('#messages').on('mousemove', function(e) {
         hover = e.target;
-        if(hover.localName == 'img' && ctrl){
-            $('#bigimg')[0].innerHTML = hover.outerHTML;
-            $('#bigimg').children().removeAttr('onload');
-        } else {
-            $('#bigimg')[0].innerHTML = '';
-        }
-    });
+  if(hover.localName == 'img' && ctrl){
+   $('#bigimg')[0].innerHTML = hover.outerHTML;
+   $('#bigimg').children().removeAttr('onload');
+  } else {
+   $('#bigimg')[0].innerHTML = '';
+  }
+ });
     
     var input = $('#input-message').keyup(function(e) {
         input.css('height', '1px');
@@ -1027,16 +1035,11 @@ $(function() {
 // ------------------------------------------------------------------
 
 (function() {
-    var nullCmds = { // Command objects with no properties
-        server : ['logout', 'unregister', 'whoami'],     // {}
-        local : ['block', 'unblock', 'alert', 'unalert'] // function(){}
-    };
     window.COMMANDS = {
         help : function() {
-            var cmdList = 'Available Commands: /' + CLIENT.getAvailableCommands().join(', /');
             CLIENT.show({
-            	type : 'system-message',
-                message : cmdList
+                message : 'Available Commands: /' + CLIENT.getAvailableCommands().join(', /'),
+                type : 'system-message'
             });
         },
         nick : {
@@ -1048,6 +1051,8 @@ $(function() {
         login : {
             params : [ 'password', 'nick$' ]
         },
+        logout : {},
+        unregister : {},
         register : {
             params : [ 'initial_password' ]
         },
@@ -1095,6 +1100,7 @@ $(function() {
             role : 'god',
             params : [ 'access_level', 'nick$' ]
         },
+        whoami : {},
         whois : {
             params : [ 'nick$' ]
         },
@@ -1126,10 +1132,10 @@ $(function() {
             CLIENT.set('mute_speak', 'on');
         },
         style : {
-            params : [ 'style$' ],
+            params : [ 'style' ],
             handler : function(params) {
                 if (params.style == 'default' || params.style == 'none') {
-                    params.style = null;
+                    style = null;
                 }
                 CLIENT.set('style', params.style);
             }
@@ -1147,7 +1153,7 @@ $(function() {
             params : [ 'color' ],
             handler : function(params) {
                 if (params.color == 'default' || params.color == 'none') {
-                    CLIENT.set('color', null);
+                    params.color = null;
                 } else if (parser.isColor(params.color)){
                     CLIENT.set('color', params.color);
                 } else {
@@ -1163,7 +1169,7 @@ $(function() {
             params : [ 'flair$' ],
             handler : function(params) {
                 if (params.flair == 'default' || params.flair == 'none') {
-                    flair = null;
+                    params.flair = null;
                 }
                 flair = params.flair.replace(/&/g, '\\&')
                 CLIENT.set('flair', flair);
@@ -1217,8 +1223,6 @@ $(function() {
                 if (valid.indexOf(attribute_name) >= 0) {
                     if (attribute_name == 'note') {
                         attribute_name = 'notification';
-                    }else if (attribute_name == 'bg'){
-                        attribute_name = 'background';
                     }
                     CLIENT.show({
                         type : 'escaped-message',
@@ -1233,7 +1237,7 @@ $(function() {
             }
         },
         speak : {
-            params : [ '[voice]|message' ]
+            params : [ '[voice|]message' ]
         },
         elbot : {
             params : [ 'message$' ]
@@ -1245,7 +1249,8 @@ $(function() {
         part : {
             params : [ 'message$' ]
         },
-        toggle : {
+        afk : {},
+        set : {
             params : [ 'att' ],
             handler : function(params) {
                 var att = params.att;
@@ -1257,10 +1262,14 @@ $(function() {
                 }
             }
         },
+        block : function(){},
+        unblock : function(){},
         unblock_all : function(){
             CLIENT.set('block',"");
             CLIENT.show('Blocklist has been cleared');
         },
+        alert : function(){},
+        unalert : function(){},
         private : {
             role : 'super'
         },
@@ -1326,32 +1335,24 @@ $(function() {
             params : [ 'url' ]
         },
 	cam : function(){ //Mr.Guy's shitty solution for cams.
-            video('event', 'embed', 'http://spookyscary.party/')
+            video('event', 'embed', 'https://apprtc.appspot.com/r/spooks')
         }
     };
-    for (x in nullCmds)
-        for (var i = 0; i < nullCmds[x].length; i++)
-            x == 'server' ? window.COMMANDS[nullCmds[x][i]] = {} : window.COMMANDS[nullCmds[x][i]] = function(){};
 
     COMMANDS.colour = COMMANDS.color;
     COMMANDS.background = COMMANDS.bg;
 })();
 
-/*
- * Adds user to the specified list
- * 
- * @param att   Name of the list
- * @param user  Nick to be added to that list
- */
-add = function(att, user){
-    var block = CLIENT.get(att);
-    var searchTerm = new RegExp("(^|(?: ))" + user + "($|,+? )","i");
-    if (block.search(searchTerm) == -1){
+var searchTerm;
+add = function(att,user){
+    block = CLIENT.get(att);
+    searchTerm = new RegExp("(^|(?: ))" + user+"($|,+? )","i");
+    if(block.search(searchTerm) == -1){
         block += ", " + user;
-        while (block[0] == "," | block[0] == " ") // it works...
+        while (block[0] == "," | block[0] == " ")
             block = block.substring(1);
         CLIENT.show(user + ' has been added');
-        CLIENT.set(att, block);
+        CLIENT.set(att,block);
     } else {
         CLIENT.show({
             message : 'That nick is already added',
@@ -1359,27 +1360,20 @@ add = function(att, user){
         });
     }
 }
-
-/*
- * Removes user from a specified list
- *
- * @param att   Name of the list
- * @param user  Nick to be removed from that list
- */
-remove = function(att, user){
-    var block = CLIENT.get(att);
-    var searchTerm = new RegExp("(^|(?: ))" + user+"($|,+? )","i");
-    var index = block.search(searchTerm);
-    if (index != -1){
+remove = function(att,user){
+    block = CLIENT.get(att);
+    searchTerm = new RegExp("(^|(?: ))" + user+"($|,+? )","i");
+    index = block.search(searchTerm);
+    if(index != -1){
         if (block.split(",").length == 1){
             block = "";
         } else {
-            block = block.substring(0,index-1) + block.substring(index+user.length+1).trim();
-            while (block[0] == ",")
+            block = block.substring(0,index-1) + block.substring(index+user.length+1);
+            while (block[0] == "," | block[0] == " ")
                 block = block.substring(1);
         }
         CLIENT.show(user + ' was removed.');
-        CLIENT.set(att, block);
+        CLIENT.set(att,block);
     } else {
         CLIENT.show({
             message : 'That nick is not on the list',
@@ -1426,7 +1420,7 @@ parser = {
         return $('<span>' + parsed + '</span>').text();
     },
     parseLinks : function(str) {
-        // Convert chars to html codes
+        // escaping shit
         str = str.replace(/&/gi, '&amp;');
         str = str.replace(/>/gi, '&gt;');
         str = str.replace(/</gi, '&lt;');
@@ -1435,10 +1429,10 @@ parser = {
         str = str.replace(/\\\\n/g, this.repslsh);
         str = str.replace(/\\n/g, '<br />');
         str = str.replace(this.repslsh, '\\\\n');
-        // Remove replacement codes
+        // remove my replacement characters. they are not fscking allowed. lol.
         str = str.replace(RegExp(this.replink, 'g'), '');
         str = str.replace(RegExp(this.repslsh, 'g'), '');
-        // Parse links
+        // replace links
         var links = [];
         var prestr= "";
         var poststr = str;
@@ -1458,17 +1452,18 @@ parser = {
         }
         var escs = str.match(/\\./g);
         str = str.replace(/\\./g, this.repslsh);
-        // Replace escapes
-        for (i in escs)
+        // replace escapes
+        for (i in escs) {
             str = str.replace(this.repslsh, escs[i][1]);
-        // Replace links
+        }
+        // replace links
         if (links.length > 0) {
             for (var i = 0; i < links.length; i++) {
                 link = links[i].replace(/^((.)(.+))$/, '$1');
                 str = str.replace(this.replink, '<a target="_blank" href="' + link + '">' + link + '</a>');
             }
         }
-        // Parse spaces
+        // change spaces to &nbsp;
         escs = str.match(/<[^>]+?>/gi);
         str = str.replace(/<[^>]+?>/gi, this.repslsh);
         str = str.replace(/\s{2}/gi, ' &nbsp;');
@@ -1482,37 +1477,31 @@ parser = {
         return check.test(str)
     },
     parse : function(str, second) {
-        // Convert chars to html codes
+        // escaping shit
         str = str.replace(/\n/g, '\\n');
         str = str.replace(/&/gi, '&amp;');
         str = str.replace(/>/gi, '&gt;');
         str = str.replace(/</gi, '&lt;');
         str = str.replace(/"/gi, '&quot;');
         str = str.replace(/#/gi, '&#35;');
-        // Codes containing hashtags go below
         str = str.replace(/\$/gi, '&#36;');
         str = str.replace(/'/gi, '&#39;');
         str = str.replace(/~/gi, '&#126;');
         str = str.replace(/\\\\n/g, this.repslsh);
         str = str.replace(/\\n/g, '<br />');
         str = str.replace(this.repslsh, '\\\\n');
-        // Define embed substring
+        // define alt link substring
         var repEmb = this.replink.substring(0,40) + '¤';
-        // Remove replacement codes
+        // remove my replacement characters. they are not fscking allowed. lol.
         str = str.replace(RegExp(this.replink, 'g'), '');
         str = str.replace(RegExp(this.repslsh, 'g'), '');
         // set links array for embeds and links
         var links = [];
         var embedLinks = [];
-        // Filter out embed links
-        str = str.replace(/\/embed (\S*)\|/g, function(match, p1){
-        	if (p1.match(this.linkreg))
-        		for (var i = 0; i < 3; i++ )
-        			embedLinks.push(p1)
-        	return '<a target="_blank" href="'+repEmb+'">'+repEmb+'</a> <a target="_blank" onclick="video(\'\', \'embed\', \''+repEmb+'\')">[embed]</a>';
-        });
-        // Replace links
-        var prestr = "";
+        //embed
+        str = str.replace(/\/embed (\S*)\|/g, function(match, p1){if (p1.match(this.linkreg)){for (var i = 0; i < 3; i++ ){embedLinks.push(p1)}} return '<a target="_blank" href="'+repEmb+'">'+repEmb+'</a> <a target="_blank" onclick="video(\'\', \'embed\', \''+repEmb+'\')">[embed]</a>';});
+        // replace links
+        var prestr= "";
         var poststr = str;
         var index;
         while (poststr.search(/https?:\/\//i) != -1){
@@ -1529,99 +1518,115 @@ parser = {
             str = prestr + poststr;
         }
         var escs = str.match(/\\./g);
-        if (!second) // Does not remove backslashes for gen-messages
+        if (!second){
             str = str.replace(/\\./g, this.repslsh);
-        // Add styles
-        if (CLIENT.get('styles') == 'on'){
-            str = this.multiple(str, /\/\!!([^\|]+)\|?/g, '<div id=neon>$1</div>');
-            str = this.multiple(str, /\/\&#35;([^\|]+)\|?/g, '<div id=spoil>$1</div>');
-            str = this.multiple(str, /\/\++([^\|]+)\|?/g, '<div id=spinner>$1</div>');
-            str = this.multiple(str, /\/\+([^\|]+)\|?/g, '<div id=rotat>$1</div>');
-            str = this.multiple(str, /\/\^([^\|]+)\|?/g, '<big>$1</big>');
-            str = this.multiple(str, /\/\*([^\|]+)\|?/g, '<strong>$1</strong>');
-            str = this.multiple(str, /\/\%([^\|]+)\|?/g, '<i>$1</i>');
-            str = this.multiple(str, /\/\_([^\|]+)\|?/g, '<u>$1</u>');
-            str = this.multiple(str, /\/\-([^\|]+)\|?/g, '<strike>$1</strike>');
-            str = str.replace(/\/\&amp;([^\|]+)\|?/g, '<div id=marquee>$1</div>');
-            str = this.multiple(str, /\/\@([^\|]+)\|?/g, '<div id=test style="text-shadow: 0 0 2px white;color: transparent;">$1</div>')
-            str = this.multiple(str, /\/\!([^\|]+)\|?/g, '<div id=flashing>$1</div>');
-            str = this.multiple(str, /\/\&#126;([^\|]+)\|?/g, '<small>$1</small>');
-            str = this.multiple(str, /\/\`([^\|]+)\|?/g, '<code>$1</code>');
         }
-        // Replace >>>/x/<text> with 8ch.net/x/res/<text>
+        // replace underscores, et cetera
+        if(CLIENT.get('styles') == 'on'){
+         str = this.multiple(str, /\/\!!([^\|]+)\|?/g, '<div id=neon>$1</div>');
+         str = this.multiple(str, /\/\&#35;([^\|]+)\|?/g, '<div id=spoil>$1</div>');
+         str = this.multiple(str, /\/\++([^\|]+)\|?/g, '<div id=spinner>$1</div>');
+         str = this.multiple(str, /\/\+([^\|]+)\|?/g, '<div id=rotat>$1</div>');
+         str = this.multiple(str, /\/\^([^\|]+)\|?/g, '<big>$1</big>');
+         str = this.multiple(str, /\/\*([^\|]+)\|?/g, '<strong>$1</strong>');
+         str = this.multiple(str, /\/\%([^\|]+)\|?/g, '<i>$1</i>');
+         str = this.multiple(str, /\/\_([^\|]+)\|?/g, '<u>$1</u>');
+         str = this.multiple(str, /\/\-([^\|]+)\|?/g, '<strike>$1</strike>');
+         str = str.replace(/\/\&amp;([^\|]+)\|?/g, '<div id=marquee>$1</div>');
+         str = this.multiple(str, /\/\@([^\|]+)\|?/g, '<div id=test style="text-shadow: 0 0 2px white;color: transparent;">$1</div>')
+         str = this.multiple(str, /\/\!([^\|]+)\|?/g, '<div id=flashing>$1</div>');
+         str = this.multiple(str, /\/\&#126;([^\|]+)\|?/g, '<small>$1</small>');
+         str = this.multiple(str, /\/\`([^\|]+)\|?/g, '<code>$1</code>');
+        }
+        // try to replace all >>>/x/??? for links to 8ch.net/x/res/???
         str = str.replace(/&gt;&gt;&gt;(\/[a-z0-9]+)\/(\d+)?\/?/gi, ' <a target="_blank" href="https://8ch.net$1/res/$2/">$&</a>');
+        // if there's any links leading to 8ch.net/?/res/ (nothing
+        // after /res/), trim them to just /?/
         str = str.replace(/https:\/\/8chan.co\/([a-z0-9]+)\/res\/"/gi, "https://8ch.net/$1/\"");
-        // Add quotes
+        // >>78 quote
         var barWidth = 52; //includes quoteDiv border
         function scrollHTML(str1, str2){return '<a onmouseenter = "var quoteDiv = document.createElement(\x27div\x27); quoteDiv.setAttribute(\x27id\x27,\x27quoteDiv\x27); quoteDiv.setAttribute(\x27style\x27,\x27visibility:hidden\x27); setTimeout(function(){$(\x27#quoteDiv\x27).css(\x27visibility\x27,\x27visible\x27);},50); $(\x27#messages\x27).prepend(quoteDiv); $(\x27#quoteDiv\x27).css(\x27position\x27,\x27fixed\x27); $(\x27#quoteDiv\x27).css(\x27z-index\x27,\x275\x27); if (x == undefined){var x = $(document).mousemove(function(e){mouseX = e.pageX; mouseY = e.pageY})} if (quoteDiv != undefined){var msgClone = $(\x27.spooky_msg_'+str2+'\x27).last().parent().clone(); msgClone.children(\x27.message-content\x27).attr(\x27class\x27,\x27message-content msg_quote_'+str2+'\x27); msgClone.appendTo(\x27#quoteDiv\x27);}if ($(\x27#quoteDiv\x27).height() + mouseY + '+barWidth+' < window.innerHeight){$(\x27#quoteDiv\x27).css({left:mouseX + 30,top:mouseY})}else{$(\x27#quoteDiv\x27).css({left:mouseX + 30,top:window.innerHeight - '+barWidth+' - $(\x27#quoteDiv\x27).height()})}" onmousemove = "if ($(\x27#quoteDiv\x27).height() + mouseY + '+barWidth+' < window.innerHeight){$(\x27#quoteDiv\x27).css({left:mouseX + 30,top:mouseY})}else{$(\x27#quoteDiv\x27).css({left:mouseX + 30,top:window.innerHeight - '+barWidth+' - $(\x27#quoteDiv\x27).height()})}" onmouseout = "$(\x27#quoteDiv\x27).remove();" onclick = "$(\x27#messages\x27).animate({scrollTop: $(\x27.spooky_msg_'+str2+'\x27).last().offset().top - $(\x27#messages\x27).offset().top + $(\x27#messages\x27).scrollTop()},\x27normal\x27,function(){$(\x27.spooky_msg_'+str2+'\x27).last().animate({\x27background-color\x27:\x27rgb(255, 255, 255,0.8)\x27},400,function(){$(\x27.spooky_msg_'+str2+'\x27).last().animate({\x27background-color\x27:\x27transparent\x27},400)});});"><u>'+str1+'</u></a>';}
         function invalidHTML(str){return '<div style = "color: #AD0000">'+str+'</div>';}
         if (str.match(/(^| )&gt;&gt;[1-9]([0-9]+)?/) != null)
 		str = str.replace(/(&gt;&gt;([1-9]([0-9]+)?))/gi, function(match,p1,p2){if(document.getElementsByClassName('spooky_msg_'+p2)[0] != null){return scrollHTML(p1,p2)}else{return invalidHTML(p1)}});
-        // Add greentext
+        // >implying
         str = str.replace(/^(&gt;.*)$/i, '&#35;789922 $1');
-        // Javascript links
+        //JavaScript links
         str = str.replace(/(\/\?)([^\|]+)\|([^\|]+)\|?/gi, function(_, __, a, b){
             a = a.replace(/&#35;/gi, '#');
             if(/[^:]*javascript *:/im.test(a)) {
                     if (b.trim() == ""){
-                    	return '<div><a href="javascript:void(0)" title = "'+a+'" onclick = "'+a+'">' + '[JavaScript]' + '</a>&nbsp;<a onclick="window.prompt(&quot;The text is below&quot;,&quot;'+a+'&quot;);">[Copy]</a></div>';
+                    return '<div><a href="javascript:void(0)" title = "'+a+'" onclick = "'+a+'">' + '[JavaScript]' + '</a>&nbsp;<a onclick="window.prompt(&quot;The text is below&quot;,&quot;'+a+'&quot;);">[Copy]</a></div>';
                     }
                     return '<div><a href="javascript:void(0)" title = "'+a+'" onclick = "'+a+'">' + b.trim() + '</a>&nbsp;<a onclick="window.prompt(&quot;The text is below&quot;,&quot;'+a+'&quot;);">[Copy]</a></div>';
             } else {
                 if (b.trim() == ""){
-                    return '<div><a href="javascript:void(0)" title = "'+a+'" onclick = "'+a+'">' + '[Script]' + '</a>&nbsp;<a onclick="window.prompt(&quot;The text is below&quot;,&quot;'+a+'&quot;);">[Copy]</a></div>';
+                return '<div><a href="javascript:void(0)" title = "'+a+'" onclick = "javascript: '+a+'">' + '[Script]' + '</a>&nbsp;<a onclick="window.prompt(&quot;The text is below&quot;,&quot;'+a+'&quot;);">[Copy]</a></div>';
                 }
-                    return '<div><a href="javascript:void(0)" title = "'+a+'" onclick = "'+a+'">' + b.trim() + '</a>&nbsp;<a onclick="window.prompt(&quot;The text is below&quot;,&quot;'+a+'&quot;);">[Copy]</a></div>';
+                return '<div><a href="javascript:void(0)" title = "'+a+'" onclick = "javascript: '+a+'">' + b.trim() + '</a>&nbsp;<a onclick="window.prompt(&quot;The text is below&quot;,&quot;'+a+'&quot;);">[Copy]</a></div>';
             }
         });
-        // Replace colors
+        //colors
         str = this.multiple(str, /&#35;&#35;([\da-f]{6}|[\da-f]{3})(.+)$/i, '<span style="background-color: #$1;">$2</span>');
         str = this.multiple(str, /&#35;([\da-f]{6})([^;].*)$/i, '<span style="color: #$1;">$2</span>');
         str = this.multiple(str, /&#35;([\da-f]{3})([^;](?:..[^;].*|.|..|))$/i, '<span style="color: #$1;">$2</span>');
         str = this.multiple(str, RegExp('&#35;&#35;(' + this.coloreg + ')(.+)$', 'i'), '<span style="background-color: $1;">$2</span>');
         str = this.multiple(str, RegExp('&#35;(' + this.coloreg + ')(.+)$', 'i'), '<span style="color: $1;">$2</span>');
         str = this.multiple(str, this.fontRegex, '<span style="font-family:\'$3\'">$4</span>');
-        // Replace escapes
+        // filters
+        //original = ['you','matter','think','care','about','this','for','shit','nigger','nothing','out of','doesn\'t','doesnt','my','ask','question','you are','nice','trying to','black','rose','no ','fag ','faggot','what','too ','to ','guy','white','yes','mom','ing ','with','th','are ']
+        //replace = ['u','matta','be thinkin','give a fuck','bout','dis','fo','shiznit','nigga','nuttin','outa','don\'t','dont','muh','axe','queshon','yo ass is','dank','tryna','nigga','flowa','naw ','homo ','homo','whut','2 ','2 ','nigga','cracka','ye','mama','in ','wit','d','r ']
+        //for (i = 0; i < original.length; i++) { 
+        //   if(str.indexOf(original[i]) != -1){
+        //        str = str.replace(original[i],replace[i])
+        //   }
+        //}
+        // replace escapes
         for (i in escs) {
             str = str.replace(this.repslsh, escs[i][1]);
         }
-        // Replace embed links
+        // replace embedded links
         if (embedLinks.length > 0) {
             for (var i = 0; i < embedLinks.length; i++) {
                 elink = embedLinks[i].replace(/^((.)(.+))$/, '$1');
                 str = str.replace(repEmb, elink);
             }
         }
-        // Replace other links
+        // replace links
         if (links.length > 0) {
             for (var i = 0; i < links.length; i++) {
                 link = links[i].replace(/^((.)(.+))$/, '$1');
                 str = str.replace(this.replink, '<a target="_blank" href="' + link + '">' + link + '</a>');
             }
         }
-        // Prevent blacklisted images, parse images
-        var img = /(<a target="_blank" href="[^"]+?">)([^<]+?\.(?:gif|jpg|jpeg|png|bmp))<\/a>/i.exec(str);
-        if (img && CLIENT.get('images') == 'on') {
-            var blacklisted = false;
-            for (var i = 0; i < BLACKLIST.length; i++){
-                blacklisted = img[2].indexOf(BLACKLIST[i]) >= 0;
-                if (blacklisted) break;
-                str = str.replace(img[0], img[1] + '<img src="' + img[2] + '" onload="scrollToBottom()" onerror="imageError(this)" /></a>');
+
+            var img = /(<a target="_blank" href="[^"]+?">)([^<]+?\.(?:gif|jpg|jpeg|png|bmp))<\/a>/i.exec(str);
+
+            if (img && CLIENT.get('images') == 'on') {
+                var blacklisted = false;
+                for ( var i = 0; i < BLACKLIST.length && !blacklisted; i++) {
+                    blacklisted = img[2].indexOf(BLACKLIST[i]) >= 0;
+                }
+                if (!blacklisted) {
+                    str = str.replace(img[0], img[1] + '<img src="' + img[2] + '" onload="scrollToBottom()" onerror="imageError(this)" /></a>');
+                }
             }
-        }
-        // Video embeds
-        if (str.search(/(youtu(\.)?be)/gi) != -1)
+        
+  
+        if (str.search(/(youtu(\.)?be)/gi) != -1){
             str = str.replace(/<a [^>]*href="[^"]*(?:youtu\.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?"]*)[^"]*">([^<]*)<\/a>/, '<a target="_blank" href="$2">$2</a> <a href="javascript:void(0)" onclick="video(event, \'youtube\', \'$1\')" class="show-video">[video]</a>');
+        }
         str = str.replace(/<a [^>]*href="[^"]*vimeo.com\/(\d+)">([^<]*)<\/a>/, '<a target="_blank" href="$2">$2</a> <a href="javascript:void(0)" onclick="video(event, \'vimeo\', \'$1\')" class="show-video">[video]</a>');
         str = str.replace(/<a [^>]*href="[^"]*liveleak.com\/ll_embed\?f=(\w+)">([^<]*)<\/a>/, '<a target="_blank" href="$2">$2</a> <a href="javascript:void(0)" onclick="video(event, \'liveleak\', \'$1\')" class="show-video">[video]</a>');
         str = str.replace(/<a [^>]*href="([^'"]*\.webm)">([^<]*)<\/a>/i, '<a target="_blank" href="$2">$2</a> <a href="javascript:void(0)" onclick="video(event, \'html5\', \'$1\')" class="show-video">[video]</a>');
         str = str.replace(/<a [^>]*href="[^"]*ustream.tv\/embed\/(\d+)\?v=3&amp;wmode=direct">([^<]*)<\/a>/, '<a target="_blank" href="$2">$2</a> <a href="javascript:void(0)" onclick="video(event, \'ustream\', \'$1\')" class="show-video">[video]</a>');
-        // Parse spaces
+        // change spaces to &nbsp;
         escs = str.match(/<[^>]+?>/gi);
         str = str.replace(/<[^>]+?>/gi, this.repslsh);
         str = str.replace(/\s{2}/gi, ' &nbsp;');
-        for (i in escs)
+        for (i in escs) {
             str = str.replace(this.repslsh, escs[i]);
+        }
         return str;
     }
 };
@@ -1835,7 +1840,7 @@ function video(event, type, input) {
             height : '322px',
             zIndex : '5'
         }).appendTo('body');
-        var header = $('<div class="top"></div>').css({
+        var header = $('<div></div>').css({
             cursor : 'move',
             userSelect : 'none',
             backgroundColor : '#444'
